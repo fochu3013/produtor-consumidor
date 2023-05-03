@@ -1,0 +1,22 @@
+
+#include <semaphore.h>
+#include <string>
+#include <iostream>
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        std::cerr << "Uso: " << argv[0] << " nome_memoria_compartilhada\n";
+        return 1;
+    }
+    
+    std::string nome = argv[1];
+    std::string nome_mutex = nome + "_mutex";
+    std::string nome_vazio = nome + "_vazio";
+    std::string nome_cheio = nome + "_cheio";
+    
+    sem_unlink(nome_mutex.c_str());
+    sem_unlink(nome_vazio.c_str());
+    sem_unlink(nome_cheio.c_str());
+    
+    return 0;
+}
