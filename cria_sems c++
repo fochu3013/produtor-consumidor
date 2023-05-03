@@ -1,0 +1,41 @@
+#include <string>
+#include <semaphore.h>
+#include <iostream>
+
+constexpr int MAXFILA = 8;
+
+int main(int argc, char *argv[]) {
+
+    // Verifica se o nome da fila foi passado como parâmetro
+    if (argc < 2) {
+        std::cerr << "Informe o nome da fila compartilhada como parâmetro.\n";
+        return 1;
+    }
+
+    // Cria o nome dos semáforos
+    std::string nome(argv[1]);
+    std::string nome_mutex = nome + "_mutex";
+    std::string nome_vazio = nome + "_vazio";
+    std::string nome_cheio = nome + "_cheio";
+
+    // Cria e inicializa os semáforos
+    sem_t* mutex = sem_open(nome_mutex.c_str(), O_CREAT | O_EXCL, 0644, 1);
+    sem_t* vazio = sem_open(nome_vazio.c_str(), O_CREAT | O_EXCL, 0644, MAXFILA);
+    sem_t* cheio = sem_open(nome_cheio.c_str(), O_CREAT | O_EXCL, 0644, 0);
+
+    // Verifica se os semáforos foram criados com sucesso
+    if (mutex == SEM_FAILED || vazio == SEM_FAILED || cheio == SEM_FAILED) {
+        std::cerr << "Erro ao criar semáforos.\n";
+        return 1;
+    }
+
+    // Imprime uma mensagem de sucesso
+    std::cout << "Semáforos criados com sucesso.\n";
+
+    // Fecha os semáforos
+    sem_close(mutex);
+    sem_close(vazio);
+    sem_close(cheio);
+
+    return 0;
+}
