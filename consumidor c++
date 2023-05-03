@@ -1,0 +1,104 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <semaphore.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <string.h>
+#include <time.h>
+
+#define MAXFILA 10
+#define NUM_DATES 64
+
+typedef struct {
+    int ini, fim;
+    char datas[MAXFILA][11];
+} fila;
+
+int main(int argc, char *argv[]) {
+    if(argc < 2) {
+        fprintf(stderr, "Uso: %s <nome>\n", argv[0]);
+        exit(1);
+    }
+
+    // Obter o nome da fila e dos semáforos
+    char* nome = argv[1];
+    char* nome_mutex = (char*) malloc(strlen(nome) + 7);
+    sprintf(nome_mutex, "%s_mutex", nome);
+    char* nome_vazio = (char*) malloc(strlen(nome) + 7);
+    sprintf(nome_vazio, "%s_vazio", nome);
+    char* nome_cheio = (char*) malloc(strlen(nome) + 7);
+    sprintf(nome_cheio, "%s_cheio", nome);
+
+    // Abrir a memória compartilhada da fila
+    int fd = shm_open(nome, O_RDWR, S_IRUSR | S_IWUSR);
+    if(fd == -1) {
+        perror("shm_open");
+        exit(1);
+    }
+
+    // Obter o tamanho da memória compartilhada
+    off_t tamanho = lseek(fd, 0, SEEK_END);
+    lseek(fd, 0, SEEK_SET);
+
+    // Mapear a memória compartilhada
+    fila* f = (fila*) mmap(NULL, tamanho, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if(f == MAP_FAILED) {
+        perror("mmap");
+        exit(1);
+    }
+
+    // Obter os semáforos
+    sem_t* mutex = sem_open(nome_mutex, O_RDWR);
+    if(mutex == SEM_FAILED) {
+        perror("sem_open(mutex)");
+        exit(1);
+    }
+
+    sem_t* vazio = sem_open(nome_vazio, O_RDWR);
+    if(vazio == SEM_FAILED) {
+        perror("sem_open(vazio)");
+        exit(1);
+    }
+
+    sem_t* cheio = sem_open(nome_cheio, O_RDWR);
+    if(cheio == SEM_FAILED) {
+        perror("sem_open(cheio)");
+        exit(1);
+    }
+
+    // Consumir as datas da fila
+    for(int i = 0; i < NUM_DATES; i++) {
+        // Aguardar por uma posição cheia na fila
+        sem_wait(cheio);
+        // Aguardar pelo mutex
+        sem_wait(mutex);
+
+        // Remover a data da fila
+        char* data = f->datas[f->ini];
+        f->ini = (f->ini + 1) % MAXFILA;
+
+        // Liberar o mutex
+        sem_post(mutex);
+        // Incrementar o número de posições vazias
+        sem_post(vazio);
+
+        // Imprimir a data
+        printf("Consumidor: %s\n", data);
+
+        // Aguardar S segundos
+        float s;
+        sscanf(argv[2], "%f", &s);
+        usleep(s * 1000000);
+    }
+
+    // Fechar os semáforos
+    sem_close(mutex);
+    sem_close(vazio);
+    sem_close(cheio);
+
+    // Desmapear a memória compartilhada
+    munmap(f, tamanho);
+
+    //
