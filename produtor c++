@@ -1,0 +1,92 @@
+#include <iostream>
+#include <ctime>
+#include <cstdlib>
+#include <cstring>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <semaphore.h>
+
+using namespace std;
+
+const int MAXFILA = 10; // Tamanho máximo da fila
+
+// Estrutura da fila compartilhada
+struct Fila {
+    int inicio;
+    int fim;
+    int tamanho;
+    time_t dados[MAXFILA];
+};
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        cerr << "Erro: informe o nome da memoria compartilhada como argumento." << endl;
+        return 1;
+    }
+
+    string nome = argv[1];
+    string nome_mutex = nome + "_mutex";
+    string nome_vazio = nome + "_vazio";
+    string nome_cheio = nome + "_cheio";
+
+    // Abre a memória compartilhada
+    int fd = shm_open(nome.c_str(), O_RDWR, 0);
+    if (fd == -1) {
+        cerr << "Erro ao abrir a memoria compartilhada." << endl;
+        return 1;
+    }
+
+    // Mapeia a memória compartilhada
+    Fila* fila = (Fila*) mmap(NULL, sizeof(Fila), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (fila == MAP_FAILED) {
+        cerr << "Erro ao mapear a memoria compartilhada." << endl;
+        return 1;
+    }
+
+    // Abre os semáforos
+    sem_t* mutex = sem_open(nome_mutex.c_str(), O_RDWR);
+    sem_t* vazio = sem_open(nome_vazio.c_str(), O_RDWR);
+    sem_t* cheio = sem_open(nome_cheio.c_str(), O_RDWR);
+
+    if (mutex == SEM_FAILED || vazio == SEM_FAILED || cheio == SEM_FAILED) {
+        cerr << "Erro ao abrir os semaforos." << endl;
+        return 1;
+    }
+
+    // Produtor produz 64 datas fictícias e as insere na fila a cada T segundos
+    float T = atof(argv[2]);
+    srand(time(NULL));
+    for (int i = 0; i < 64; i++) {
+        sleep(T);
+
+        // Gera data fictícia
+        time_t rawtime;
+        struct tm* timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        timeinfo->tm_year = rand() % 100 + 2000;
+        timeinfo->tm_mon = rand() % 12;
+        timeinfo->tm_mday = rand() % 28 + 1;
+        timeinfo->tm_hour = rand() % 24;
+        timeinfo->tm_min = rand() % 60;
+        timeinfo->tm_sec = rand() % 60;
+        time_t data = mktime(timeinfo);
+
+        // Espera um espaço vazio na fila
+        sem_wait(vazio);
+        sem_wait(mutex);
+
+        // Insere a data na fila
+        fila->dados[fila->fim] = data;
+        fila->fim = (fila->fim + 1) % MAXFILA;
+        fila->tamanho++;
+
+        // Libera o semáforo mutex e aumenta o semáforo cheio
+        sem_post(mutex);
+        sem_post(cheio);
+
+        // Imprime a data na tela
+        cout << "Produzido: " << asctime(timeinfo);
+    }
